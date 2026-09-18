@@ -10,9 +10,7 @@ import {
   Bot,
   Paperclip,
   X,
-  Crown,
   RefreshCw,
-  Zap,
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -647,14 +645,6 @@ function Index() {
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
               <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Full Unlimited Prompt · Tanpa Batasan Token · Zero-Error Engine
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-0.5 text-xs font-medium text-indigo-300">
-              <Zap className="size-3 text-indigo-400" />
-              Jalur AI: {activeModel}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-xs font-medium text-amber-300">
-              <Crown className="size-3.5 text-amber-400" />
-              Desain Profesional, Mewah & Modern
             </span>
           </div>
 

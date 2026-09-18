@@ -113,8 +113,12 @@ export const Route = createFileRoute("/api/generate")({
   server: {
     handlers: {
       GET: async () => {
-        const geminiKey = process.env["GEMINI_API_KEY"];
-        const lovableKey = process.env["LOVABLE_API_KEY"];
+        const geminiKey =
+          process.env["GEMINI_API_KEY"] ||
+          process.env["GOOGLE_API_KEY"] ||
+          process.env["GOOGLE_GENAI_API_KEY"] ||
+          process.env["VITE_GEMINI_API_KEY"];
+        const lovableKey = process.env["LOVABLE_API_KEY"] || process.env["VITE_LOVABLE_API_KEY"];
         return new Response(
           JSON.stringify({
             status: "ok",
@@ -167,13 +171,18 @@ export const Route = createFileRoute("/api/generate")({
             ? `Dokumen HTML aplikasi saat ini:\n\n${body.currentCode}\n\n---\nInstruksi pengguna:\n${prompt}\n\nKembalikan DOKUMEN HTML LENGKAP yang telah diperbarui dan siap dijalankan tanpa error.`
             : `Instruksi pengguna:\n${prompt}\n\nBuat dokumen HTML lengkap, responsif, dan fungsional tanpa error.`;
 
-        // Check available API keys: User-provided key > GEMINI_API_KEY > LOVABLE_API_KEY
-        const geminiKey = body.apiKey || process.env["GEMINI_API_KEY"];
-        const lovableKey = process.env["LOVABLE_API_KEY"];
+        // Check available API keys: User-provided key > GEMINI_API_KEY / GOOGLE_API_KEY / VITE_GEMINI_API_KEY > LOVABLE_API_KEY
+        const geminiKey =
+          body.apiKey ||
+          process.env["GEMINI_API_KEY"] ||
+          process.env["GOOGLE_API_KEY"] ||
+          process.env["GOOGLE_GENAI_API_KEY"] ||
+          process.env["VITE_GEMINI_API_KEY"];
+        const lovableKey = process.env["LOVABLE_API_KEY"] || process.env["VITE_LOVABLE_API_KEY"];
 
         if (!geminiKey && !lovableKey) {
           return new Response(
-            "Kunci API AI belum dikonfigurasi. Masukkan GEMINI_API_KEY atau LOVABLE_API_KEY.",
+            "Kunci API AI belum dikonfigurasi di Vercel. Tambahkan GEMINI_API_KEY di menu 'Settings -> Environment Variables' pada project Vercel Anda agar aplikasi langsung aktif otomatis tanpa perlu input manual oleh pengguna.",
             { status: 500 },
           );
         }
