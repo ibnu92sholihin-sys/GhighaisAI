@@ -172,7 +172,7 @@ export const Route = createFileRoute("/api/generate")({
             : `Instruksi pengguna:\n${prompt}\n\nBuat dokumen HTML lengkap, responsif, dan fungsional tanpa error.`;
 
         // Check available API keys: User-provided key > GEMINI_API_KEY / GOOGLE_API_KEY / VITE_GEMINI_API_KEY > LOVABLE_API_KEY
-        const geminiKey =
+        const rawGeminiKey =
           body.apiKey ||
           process.env["GEMINI_API_KEY"] ||
           process.env["GOOGLE_API_KEY"] ||
@@ -180,7 +180,12 @@ export const Route = createFileRoute("/api/generate")({
           process.env["VITE_GEMINI_API_KEY"];
         const lovableKey = process.env["LOVABLE_API_KEY"] || process.env["VITE_LOVABLE_API_KEY"];
 
-        if (!geminiKey && !lovableKey) {
+        const geminiKeys = (rawGeminiKey || "")
+          .split(/[\n,;]+/)
+          .map((k) => k.trim())
+          .filter(Boolean);
+
+        if (geminiKeys.length === 0 && !lovableKey) {
           return new Response(
             "Kunci API AI belum dikonfigurasi di Vercel. Tambahkan GEMINI_API_KEY di menu 'Settings -> Environment Variables' pada project Vercel Anda agar aplikasi langsung aktif otomatis tanpa perlu input manual oleh pengguna.",
             { status: 500 },
@@ -264,8 +269,8 @@ export const Route = createFileRoute("/api/generate")({
           }
         }
 
-        // 1. PRIMARY ENGINE: Google Gemini via REST SSE Streaming (Gemini 2.5/2.0/1.5/3.8 Flash, 1M+ context & up to 65k tokens)
-        if (geminiKey) {
+        // 1. PRIMARY ENGINE: Google Gemini via REST SSE Streaming (Gemini 2.5/2.0/1.5 Flash, 1M+ context & up to 65k tokens)
+        if (geminiKeys.length > 0) {
           (async () => {
             let fullOutput = "";
             const writeDelta = async (chunkText: string) => {
@@ -295,12 +300,24 @@ export const Route = createFileRoute("/api/generate")({
               parts: [{ text: firstInput }],
             });
 
+            let currentKeyIndex = 0;
+            function getActiveKey() {
+              return geminiKeys[currentKeyIndex % geminiKeys.length];
+            }
+            function rotateKey() {
+              if (geminiKeys.length > 1) {
+                currentKeyIndex = (currentKeyIndex + 1) % geminiKeys.length;
+              }
+            }
+
             async function callGeminiStream(
               currentContents: typeof contents,
-              modelName = "gemini-3.8-flash",
-            ) {
-              return fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${geminiKey}`,
+              modelName = "gemini-2.5-flash",
+              allowRotate = true,
+            ): Promise<Response> {
+              const activeKey = getActiveKey();
+              const resp = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${activeKey}`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -316,6 +333,14 @@ export const Route = createFileRoute("/api/generate")({
                   }),
                 },
               );
+
+              // Auto-rotate on rate-limit (429) or quota exhaustion (402/403)
+              if ((resp.status === 429 || resp.status === 402) && geminiKeys.length > 1 && allowRotate) {
+                rotateKey();
+                return callGeminiStream(currentContents, modelName, false);
+              }
+
+              return resp;
             }
 
             async function pumpGemini(
@@ -368,10 +393,6 @@ export const Route = createFileRoute("/api/generate")({
                 "gemini-1.5-flash",
                 "gemini-2.0-flash",
                 "gemini-2.0-flash-lite",
-                "gemini-flash-latest",
-                "gemini-3.8-flash",
-                "gemini-3.7-flash",
-                "gemini-3.6-flash",
               ];
               const candidateModels =
                 body.preferredModel && allModels.includes(body.preferredModel)
@@ -420,17 +441,20 @@ export const Route = createFileRoute("/api/generate")({
               } else {
                 await pumpGemini(resp, writeDelta);
 
-                // UNLIMITED CONTINUATION LOOP:
-                // If the document is massive and did not finish with </html>,
-                // automatically stream the next continuation without any token barrier!
+                // CONTINUATION LOOP:
+                // If the document is massive and did not finish cleanly, stream continuation.
+                // Throttled to preserve RPM quota (prevents false quota exhaustion).
                 let continuationAttempts = 0;
-                const maxContinuations = isMigration ? 16 : 8;
+                const maxContinuations = isMigration ? 6 : 3;
 
                 while (
                   !fullOutput.toLowerCase().includes("</html>") &&
                   continuationAttempts < maxContinuations
                 ) {
                   continuationAttempts += 1;
+                  // Throttle to respect Gemini free-tier RPM limits
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+
                   const tail = fullOutput.slice(-6000);
                   const contContents = [
                     ...contents,

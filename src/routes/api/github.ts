@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 type Body = {
-  action: "repos" | "push" | "import";
+  action: "repos" | "push" | "import" | "create_repo";
   token?: string;
   repo?: string;
   path?: string;
@@ -9,6 +9,7 @@ type Body = {
   content?: string;
   url?: string;
   deep?: boolean;
+  private?: boolean;
 };
 
 const GH = "https://api.github.com";
@@ -70,6 +71,46 @@ export const Route = createFileRoute("/api/github")({
                 private: r.private,
                 branch: r.default_branch,
               })),
+            });
+          }
+
+          if (body.action === "create_repo") {
+            if (!body.token || !body.repo)
+              return json({ error: "Token dan nama repository wajib diisi" }, 400);
+
+            const repoName = body.repo.replace(/^.*\//, "").trim();
+            const createRes = await fetch(`${GH}/user/repos`, {
+              method: "POST",
+              headers: { ...gh(body.token), "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: repoName,
+                private: Boolean(body.private),
+                auto_init: true,
+                description: "Dibuat dengan GHIGHAIS AI",
+              }),
+            });
+
+            if (!createRes.ok) {
+              const err = (await createRes.json().catch(() => ({}))) as { message?: string };
+              return json(
+                { error: err.message || "Gagal membuat repository di GitHub" },
+                createRes.status,
+              );
+            }
+
+            const newRepo = (await createRes.json()) as {
+              full_name: string;
+              private: boolean;
+              default_branch: string;
+            };
+
+            return json({
+              ok: true,
+              repo: {
+                fullName: newRepo.full_name,
+                private: newRepo.private,
+                branch: newRepo.default_branch || "main",
+              },
             });
           }
 

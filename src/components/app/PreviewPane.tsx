@@ -60,6 +60,7 @@ export function PreviewPane({ code, editMode, onToggleEdit, onApply, onRuntimeEr
   const [selection, setSelection] = useState<Selection | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const lastCompleteRef = useRef("");
+  const activeEditingCodeRef = useRef("");
 
   // Only render documents that are fully written; a half-streamed document
   // would run broken scripts and report false errors.
@@ -77,12 +78,21 @@ export function PreviewPane({ code, editMode, onToggleEdit, onApply, onRuntimeEr
     return isComplete ? code : lastCompleteRef.current || code;
   }, [code]);
 
+  useEffect(() => {
+    if (editMode && stableCode) {
+      activeEditingCodeRef.current = stableCode;
+    }
+  }, [editMode, stableCode]);
+
+  // When editMode is active, preserve the iframe document so external re-renders
+  // do not wipe out in-memory visual edits.
   const srcDoc = useMemo(() => {
-    if (!stableCode.trim()) return "";
+    const baseHtml = editMode && activeEditingCodeRef.current ? activeEditingCodeRef.current : stableCode;
+    if (!baseHtml.trim()) return "";
     const scripts =
       `\n<script ${EDITOR_MARKER}>${ERROR_REPORTER}</script>` +
       (editMode ? `\n<script ${EDITOR_MARKER}>${EDITOR_SCRIPT}</script>` : "");
-    return `${stableCode}${scripts}`;
+    return `${baseHtml}${scripts}`;
   }, [stableCode, editMode]);
 
   useEffect(() => {
@@ -154,9 +164,14 @@ export function PreviewPane({ code, editMode, onToggleEdit, onApply, onRuntimeEr
             size="sm"
             variant={editMode ? "destructive" : "secondary"}
             className="gap-2"
-            onClick={() => onToggleEdit(!editMode)}
+            onClick={() => {
+              if (editMode) {
+                send("apply");
+              }
+              onToggleEdit(!editMode);
+            }}
           >
-            <Pencil className="size-4" /> {editMode ? "Keluar Edit" : "Mode Edit"}
+            <Pencil className="size-4" /> {editMode ? "Keluar & Simpan" : "Mode Edit"}
           </Button>
         </div>
       </div>
